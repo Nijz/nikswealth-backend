@@ -14,6 +14,7 @@ const adminSchema = new mongoose.Schema({
         type: String,
         required: true,
         minlength: 6,
+        select: false, // Exclude password from queries by default
     },
 
     name: {
