@@ -1,5 +1,6 @@
 import Admin from '../models/Admin.js';
 import Client from '../models/Client.js';
+import Payout from '../models/Payout.js';
 import BankDetails from '../models/BankDetails.js';
 import Investment from '../models/Investment.js';
 import bcrypt from 'bcrypt';
@@ -281,6 +282,109 @@ export const clientChangePassword = async (req, res) => {
 
     } catch (error) {
 
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+}
+
+export const getAdminProfile = async (req, res) => {
+    try {
+        const admin = await Admin.findById(req.user.id)
+            .select('-password -token -__v -createdAt -updatedAt -_id')
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            message: "Admin profile fetched successfully",
+            data: admin
+        });
+    } catch (error) {        
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+}
+
+export const getTotalFunds = async (req, res) => {
+
+    try {
+        
+        const totalFunds = await Investment.aggregate([
+            {
+                $group: {
+                    _id: null,
+                    totalAmount: { $sum: "$amount" }
+                }
+            }
+        ]);
+
+        if (totalFunds.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No funds found"
+            });
+        }
+
+        const admin = await Admin.findById(req.user.id);
+        admin.totalFunds = totalFunds[0].totalAmount;
+        await admin.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Total funds fetched successfully",
+            data: totalFunds[0].totalAmount
+        });
+
+    } catch (error) {
+        
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+}
+
+export const getTotalInterest = async (req, res) => {
+    
+    try {
+        
+        const totalInterest = await Payout.aggregate([
+            {
+                $match: { payoutType: 'debit' }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalInterest: { $sum: "$amount" }
+                }
+            }
+        ]);
+
+        if (totalInterest.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No interest payouts found"
+            });
+        }
+
+        const admin = await Admin.findById(req.user.id)
+        admin.totalInterest = totalInterest[0].totalInterest;
+        await admin.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Total interest fetched successfully",
+            data: totalInterest[0].totalInterest
+        });
+        
+    } catch (error) {
+        
         return res.status(500).json({
             success: false,
             message: "Internal server error",
