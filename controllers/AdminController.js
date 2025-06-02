@@ -1,4 +1,7 @@
 import Admin from '../models/Admin.js';
+import Client from '../models/Client.js';
+import BankDetails from '../models/BankDetails.js';
+import Investment from '../models/Investment.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
@@ -96,12 +99,10 @@ export const loginAdmin = async (req, res) => {
         admin.token = token;
         await admin.save();
 
-        const adminData = await Admin.findOne({ email }).select("-password -token -createdAt -updatedAt -role -__v");
-
         return res.status(200).json({
             success: true,
             message: "Login successful",
-            data: adminData
+            data: token
         });
         
     } catch (error) {
@@ -113,3 +114,177 @@ export const loginAdmin = async (req, res) => {
     }
 }
 
+export const createClient = async (req, res) => {
+
+    try {
+        
+        const { email, password, name, phone, bankName, accountNumber, ifscCode, bankBranch, amount } = req.body;
+
+        if (!email || !password || !name || !phone || !bankName || !accountNumber || !ifscCode || !bankBranch || !amount) {
+            return res.status(409).json({
+                success: false,
+                message: "All fields are required"
+            });
+        }
+
+        const ifClientExsists = await Client.findOne({email});
+
+        if (ifClientExsists) {
+            return res.status(409).json({
+                success: false,
+                message: "Client already exists with this email"
+            })
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        const newBankDetails = await BankDetails.create({
+            bankName: bankName,
+            accountNumber: accountNumber,
+            bankBranch: bankBranch,
+            ifscCode: ifscCode,
+        })
+
+        const newClient = await Client.create({
+            email: email,
+            password: hashedPassword,
+            name: name,
+            phone: phone,
+            bankDetails: newBankDetails._id,
+        })
+
+        const amountInvested = await Investment.create({
+            client: newClient._id,
+            amount: amount,
+        })
+
+        newClient.investments.push(amountInvested._id);
+        await newClient.save();
+
+       const clientDetails = await Client.findById(newClient._id)
+            .populate('bankDetails')
+            .populate('investments')
+            .select('-password -token -__v -createdAt -updatedAt -_id -totalInvestment -totalWithdrawn -totalInterest -totalBalance -transactionRequests -statements');
+
+
+        return res.status(201).json({
+            success: true,
+            message: "Client created successfully",
+            data: clientDetails
+        });
+
+    } catch (error) {
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+        
+    }
+}
+
+export const getAllClients = async (req, res) => {
+    try {
+        const clients = await Client.find()
+            .populate({
+                path: 'investments',
+                select: '-__v -createdAt -updatedAt -_id -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
+            }) 
+            .select('-password -token -__v -createdAt -updatedAt -_id -totalInvestment -totalWithdrawn -totalInterest -totalBalance -transactionRequests -statements -role -bankDetails')
+            .sort({ createdAt: -1 })
+            .lean();
+        return res.status(200).json({
+            success: true,
+            message: "All clients fetched successfully",
+            data: clients
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+}
+
+export const getClientById = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "Client ID is required"
+            });
+        }
+
+        const client = await Client.findById(id)
+            .populate('bankDetails')
+            .populate() 
+            .select('-password -token -__v -createdAt -updatedAt -_id')
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            message: "Client fetched successfully",
+            data: client
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+}
+
+export const clientChangePassword = async (req, res) => {
+    try {
+        const { email, password, newPassword } = req.body;
+
+        if (!email || !password, !newPassword) {
+            return res.status(400).json({
+                success: false,
+                message: "All fields are required"
+            });
+        }
+
+        const client = await Client.findOne({ email });
+
+        if (!client) {
+            return res.status(404).json({
+                success: false,
+                message: "Client not found"
+            });
+        }
+
+        const isPasswordValid = await bcrypt.compare(password, client.password);
+
+        if (!isPasswordValid) {
+            return res.status(401).json({
+                success: false,
+                message: "Invalid password"
+            });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        client.password = hashedPassword;
+        await client.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Password changed successfully",
+            data: client
+        });
+
+    } catch (error) {
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+}

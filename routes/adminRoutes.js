@@ -1,11 +1,16 @@
 import express from 'express';
-import { createAdmin, loginAdmin } from '../controllers/AdminController.js';
+import { createAdmin, loginAdmin, createClient, getAllClients, getClientById, clientChangePassword } from '../controllers/AdminController.js';
 import { auth, isAdmin, isClient } from '../middlewares/auth.js';
 
 const router = express.Router();
 
 router.post('/create', createAdmin)
 router.post('/login' ,loginAdmin)
+router.post('/create-client', auth, isAdmin, createClient)
+router.get('/clients', auth, isAdmin, getAllClients);
+router.get('/client/:id', auth, isAdmin, getClientById);
+router.post('/client/change-password', auth, isClient, clientChangePassword);
+
 
 export default router;
 
