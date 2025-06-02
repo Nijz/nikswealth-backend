@@ -37,13 +37,7 @@ export const createAdmin = async (req, res) => {
         return res.status(201).json({
             success: true,
             message: "Admin created successfully",
-            admin: {
-                id: newAdmin._id,
-                email: newAdmin.email,
-                name: newAdmin.name,
-                phone: newAdmin.phone,
-                role: newAdmin.role,
-            }
+            data: newAdmin
         });
 
     } catch (error) {
@@ -53,7 +47,6 @@ export const createAdmin = async (req, res) => {
             message: "Internal server error",
             error: error
         })
-        
     }
 }
 
@@ -62,6 +55,8 @@ export const loginAdmin = async (req, res) => {
     try {
 
         const { email, password } = req.body;
+
+        console.log("Login attempt with email:", email);
 
         if (!email || !password) {
             return res.status(400).json({
@@ -91,7 +86,7 @@ export const loginAdmin = async (req, res) => {
         const payload = {
             email: admin.email,
             id: admin._id,
-            role: admin.role,
+            role: admin.role
         }
 
         const token = jwt.sign(payload, process.env.JWT_SECRET, {
@@ -101,7 +96,7 @@ export const loginAdmin = async (req, res) => {
         admin.token = token;
         await admin.save();
 
-        const adminData = await Admin.findOne({ email });
+        const adminData = await Admin.findOne({ email }).select("-password -token -createdAt -updatedAt -role -__v");
 
         return res.status(200).json({
             success: true,
