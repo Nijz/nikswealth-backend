@@ -437,3 +437,96 @@ export const createPayout = async (req, res) => {
         });
     }
 }
+
+export const getAllPayouts = async (req, res) => {
+    try {
+        
+        const payouts = await Payout.find()
+            .where('payoutType')
+            .equals('debit')
+            .populate({
+                path: 'client',
+                select: '-password -token -__v -createdAt -updatedAt -_id -totalInvestment -totalWithdrawn -totalInterest -totalBalance -transactionRequests -statements -role -bankDetails',
+                populate: {
+                    path: 'investments',
+                    select: '-__v -createdAt -updatedAt -_id -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
+                }
+            })
+            .sort({ createdAt: -1 })
+            .lean();
+
+        if (payouts.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No payouts found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "All payouts fetched successfully",
+            data: payouts
+        });
+
+    } catch (error) {
+        
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+}
+
+export const getPayoutByStatus = async (req, res) => {
+    
+    try {
+
+        const { status } = req.params;
+
+        console.log(status);
+        
+        if (!status) {
+            return res.status(400).json({
+                success: false,
+                message: "Status is required"
+            });
+        }
+
+        const payouts = await Payout.find()
+            .where('status')
+            .equals(status)
+            .populate({
+                path: 'client',
+                select: '-password -token -__v -createdAt -updatedAt -_id -totalInvestment -totalWithdrawn -totalInterest -totalBalance -transactionRequests -statements -role -bankDetails',
+                populate: {
+                    path: 'investments',
+                    select: '-__v -createdAt -updatedAt -_id -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
+                }
+            })
+            .sort({ createdAt: -1 })
+            .lean();
+
+        if (payouts.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No payouts found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "All payouts fetched successfully",
+            data: payouts
+        });
+        
+
+    } catch (error) {
+        
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+}
