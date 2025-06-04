@@ -392,3 +392,48 @@ export const getTotalInterest = async (req, res) => {
         });
     }
 }
+
+export const createPayout = async (req, res) => {
+    
+    try {
+        
+        const { email, amount } = req.body;
+
+        if (!email || !amount) {
+            return res.status(400).json({
+                success: false,
+                message: "All fields are required"
+            });
+        }
+
+        const client = await Client.findOne({email})
+
+        if (!client) {
+            return res.status(404).json({
+                success: false,
+                message: "Client not found"
+            });
+        }
+
+        const newPayout = await Payout.create({
+            client: client._id,
+            amount: amount,
+            payoutType: "debit",
+            payoutDate: new Date(),
+            status: "completed"
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "Payout created successfully",
+            data: newPayout
+        });
+        
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+}
