@@ -3,6 +3,7 @@ import Client from '../models/Client.js';
 import Payout from '../models/Payout.js';
 import BankDetails from '../models/BankDetails.js';
 import Investment from '../models/Investment.js';
+import TransactionRequest from '../models/TranscationRequest.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
@@ -523,6 +524,105 @@ export const getPayoutByStatus = async (req, res) => {
 
     } catch (error) {
         
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+}
+
+export const getAllWithdrawalsRequest = async (req, res) => {
+
+    try {
+
+        const { status } = req.params;
+        
+        const withdrawalsRequest = await TransactionRequest.find()
+            .where('type').equals('withdraw')
+            .where('status').equals(status)
+            .populate({
+                path: 'client',
+                select: '-password -token -__v -createdAt -updatedAt -_id -totalInvestment -totalWithdrawn -totalInterest -totalBalance -transactionRequests -statements -role -bankDetails',
+                populate: {
+                    path: 'investments',
+                    select: '-__v -createdAt -updatedAt -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
+                }
+            })
+            .sort({ createdAt: -1 })
+            .lean();
+
+        if (withdrawalsRequest.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: `No withdrawal ${status} requests found`
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: `All ${status} withdrawal requests fetched successfully`,
+            data: withdrawalsRequest
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+
+}
+
+export const toggleWithdrawalRequest = async (req, res) => {
+    try {
+
+        const { id, status } = req.params;
+
+        if (!id || !status || !['pending', 'approved', 'rejected'].includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: "Request ID is required"
+            });
+        }
+
+        const request = await TransactionRequest.findById(id);
+        const client = await Client.findById(request.client);
+    
+        if (!request) {
+            return res.status(404).json({
+                success: false,
+                message: "Request not found"
+            });
+        }
+
+        if (request.status !== 'pending') {
+            return res.status(400).json({
+                success: false,
+                message: "Request is not pending"
+            });
+        }
+
+        request.status = 'approved';
+        request.respondedAt = new Date();
+        await request.save();
+
+        if (status === 'approved') {
+            const client = await Client.findById(request.client);
+            client.totalWithdrawn += request.amount;
+            client.totalBalance -= request.amount;
+            client.totalInvestment -= request.amount;
+            client.investments = client.investments.filter(investment => investment._id === request.investment._id);
+            await client.save();
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: `Withdrawal request ${status}`,
+        });
+
+    } catch (error) {
         return res.status(500).json({
             success: false,
             message: "Internal server error",
