@@ -6,6 +6,7 @@ import Investment from '../models/Investment.js';
 import TransactionRequest from '../models/TranscationRequest.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 
 export const createAdmin = async (req, res) => {
 
@@ -193,7 +194,7 @@ export const getAllClients = async (req, res) => {
                 path: 'investments',
                 select: '-__v -createdAt -updatedAt -_id -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
             }) 
-            .select('-password -token -__v -createdAt -updatedAt -_id -totalInvestment -totalWithdrawn -totalInterest -totalBalance -transactionRequests -statements -role -bankDetails')
+            .select('-password -token -__v -createdAt -updatedAt -totalBalance -transactionRequests -statements -role')
             .sort({ createdAt: -1 })
             .lean();
         return res.status(200).json({
@@ -242,6 +243,7 @@ export const getClientById = async (req, res) => {
 }
 
 export const clientChangePassword = async (req, res) => {
+
     try {
         const { email, password, newPassword } = req.body;
 
@@ -277,8 +279,7 @@ export const clientChangePassword = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            message: "Password changed successfully",
-            data: client
+            message: "Password changed successfully"
         });
 
     } catch (error) {
@@ -339,6 +340,81 @@ export const getTotalFunds = async (req, res) => {
             success: true,
             message: "Total funds fetched successfully",
             data: totalFunds[0].totalAmount
+        });
+
+    } catch (error) {
+        
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+}
+
+export const clientsTotalInvestment = async (req, res) => {
+    
+    try {
+        
+        const { clientId } = req.params
+
+        const result = await Investment.aggregate([
+            {
+                $match: {client: new mongoose.Types.ObjectId(clientId)}
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalAmount: { $sum: "$amount"}
+                }
+            }
+        ])
+
+        const totalInvestment = result.length > 0 ? result[0].totalAmount : 0;
+
+        console.log("Total investment:", result);
+
+        const client = await Client.findOne({email});
+        client.totalInvestment = totalInvestment;
+        client.updatedAt = new Date();
+        await client.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Total funds updated successfully",
+            data: client.totalInvestment
+        });
+        
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+}
+
+export const addClientFund = async ( req, res) => {
+    try {
+        
+        const { clientId, amount } = req.body;
+
+        if (!clientId || !amount) {
+            return res.status(400).json({
+                success: false,
+                message: "All fields are required"
+            });
+        }
+
+        const investment = await Investment.create({
+            client: clientId,
+            amount: amount
+        })
+
+        return res.status(201).json({
+            success: true,
+            message: "Client fund added successfully",
+            data: investment
         });
 
     } catch (error) {

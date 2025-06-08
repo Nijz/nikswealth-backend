@@ -60,4 +60,15 @@ investmentSchema.pre('validate', function (next) {
     next();
 });
 
+investmentSchema.post('save', async function() {
+    const clientId = this.client;
+    const result = await mongoose.model('Investment').aggregate([
+        { $match: { client: clientId }},
+        { $group: { _id: null, totalAmount: {$sum: "$amount"} } }
+    ])
+
+    const total = result.length > 0 ? result[0].totalAmount : 0;
+    await mongoose.model('Client').findByIdAndUpdate(clientId, { totalInvestment: total, updatedAt: new Date() });
+})
+
 export default mongoose.model('Investment', investmentSchema);
