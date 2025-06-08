@@ -10,8 +10,7 @@ const investmentSchema = new mongoose.Schema({
 
     amount: {
         type: Number,
-        required: true,
-        min: 150000, 
+        required: true, 
     },
 
     lockInStartDate: {

@@ -374,7 +374,7 @@ export const clientsTotalInvestment = async (req, res) => {
 
         console.log("Total investment:", result);
 
-        const client = await Client.findOne({email});
+        const client = await Client.findById(clientId);
         client.totalInvestment = totalInvestment;
         client.updatedAt = new Date();
         await client.save();
@@ -399,7 +399,7 @@ export const addClientFund = async ( req, res) => {
         
         const { clientId, amount } = req.body;
 
-        if (!clientId || !amount) {
+        if (!clientId || !amount ) {
             return res.status(400).json({
                 success: false,
                 message: "All fields are required"
