@@ -11,7 +11,8 @@ import mongoose from 'mongoose';
 export const createAdmin = async (req, res) => {
 
     try {
-        
+
+        console.log(req.body);
         const { email, password, name, phone } = req.body;
 
         if (!email || !password || !name || !phone) {
@@ -21,7 +22,7 @@ export const createAdmin = async (req, res) => {
             });
         }
 
-        const ifAdminExsists = await Admin.findOne({email});
+        const ifAdminExsists = await Admin.findOne({ email });
 
         if (ifAdminExsists) {
             return res.status(409).json({
@@ -37,7 +38,7 @@ export const createAdmin = async (req, res) => {
             password: hashedPassword,
             name: name,
             phone: phone,
-            role: 'admin',  
+            role: 'admin',
         })
 
         return res.status(201).json({
@@ -67,7 +68,7 @@ export const loginAdmin = async (req, res) => {
         if (!email || !password) {
             return res.status(400).json({
                 success: false,
-                message: "Email and password are required"
+                message: `${!email ? "Email" : "Password"} is required`
             });
         }
 
@@ -107,7 +108,7 @@ export const loginAdmin = async (req, res) => {
             message: "Login successful",
             data: token
         });
-        
+
     } catch (error) {
         return res.status(500).json({
             success: false,
@@ -120,8 +121,8 @@ export const loginAdmin = async (req, res) => {
 export const createClient = async (req, res) => {
 
     try {
-        
-        const { email, password, name, phone, bankName, accountNumber, ifscCode, bankBranch, amount } = req.body;
+
+        const { email, password, name, phone, bankName, accountNumber, ifscCode, bankBranch, amount, date } = req.body;
 
         if (!email || !password || !name || !phone || !bankName || !accountNumber || !ifscCode || !bankBranch || !amount) {
             return res.status(409).json({
@@ -130,7 +131,7 @@ export const createClient = async (req, res) => {
             });
         }
 
-        const ifClientExsists = await Client.findOne({email});
+        const ifClientExsists = await Client.findOne({ email });
 
         if (ifClientExsists) {
             return res.status(409).json({
@@ -154,6 +155,7 @@ export const createClient = async (req, res) => {
             name: name,
             phone: phone,
             bankDetails: newBankDetails._id,
+            createdAt: date,
         })
 
         const amountInvested = await Investment.create({
@@ -164,7 +166,19 @@ export const createClient = async (req, res) => {
         newClient.investments.push(amountInvested._id);
         await newClient.save();
 
-       const clientDetails = await Client.findById(newClient._id)
+        const adminProfile = await Admin.findById(req.user.id);
+        adminProfile.totalFunds = adminProfile.totalFunds + amount;
+        await adminProfile.save();
+
+        const payout = await Payout.create({
+            client: newClient._id,
+            amount: amount,
+            payoutType: "credit",
+            payoutDate: date ? date : new Date(),
+            status: 'completed'
+        })
+
+        const clientDetails = await Client.findById(newClient._id)
             .populate('bankDetails')
             .populate('investments')
             .select('-password -token -__v -createdAt -updatedAt -_id -totalInvestment -totalWithdrawn -totalInterest -totalBalance -transactionRequests -statements');
@@ -183,18 +197,18 @@ export const createClient = async (req, res) => {
             message: "Internal server error",
             error: error.message
         });
-        
+
     }
 }
 
 export const getAllClients = async (req, res) => {
     try {
         const clients = await Client.find()
+            .populate('bankDetails')
             .populate({
-                path: 'investments',
-                select: '-__v -createdAt -updatedAt -_id -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
-            }) 
-            .select('-password -token -__v -createdAt -updatedAt -totalBalance -transactionRequests -statements -role')
+                path: 'investments'
+            })
+            .select('-password -token -__v -totalBalance -role')
             .sort({ createdAt: -1 })
             .lean();
         return res.status(200).json({
@@ -224,7 +238,7 @@ export const getClientById = async (req, res) => {
 
         const client = await Client.findById(id)
             .populate('bankDetails')
-            .populate() 
+            .populate()
             .select('-password -token -__v -createdAt -updatedAt -_id')
             .lean();
 
@@ -303,7 +317,7 @@ export const getAdminProfile = async (req, res) => {
             message: "Admin profile fetched successfully",
             data: admin
         });
-    } catch (error) {        
+    } catch (error) {
         return res.status(500).json({
             success: false,
             message: "Internal server error",
@@ -315,7 +329,7 @@ export const getAdminProfile = async (req, res) => {
 export const getTotalFunds = async (req, res) => {
 
     try {
-        
+
         const totalFunds = await Investment.aggregate([
             {
                 $group: {
@@ -343,7 +357,7 @@ export const getTotalFunds = async (req, res) => {
         });
 
     } catch (error) {
-        
+
         return res.status(500).json({
             success: false,
             message: "Internal server error",
@@ -353,19 +367,19 @@ export const getTotalFunds = async (req, res) => {
 }
 
 export const clientsTotalInvestment = async (req, res) => {
-    
+
     try {
-        
+
         const { clientId } = req.params
 
         const result = await Investment.aggregate([
             {
-                $match: {client: new mongoose.Types.ObjectId(clientId)}
+                $match: { client: new mongoose.Types.ObjectId(clientId) }
             },
             {
                 $group: {
                     _id: null,
-                    totalAmount: { $sum: "$amount"}
+                    totalAmount: { $sum: "$amount" }
                 }
             }
         ])
@@ -384,7 +398,7 @@ export const clientsTotalInvestment = async (req, res) => {
             message: "Total funds updated successfully",
             data: client.totalInvestment
         });
-        
+
     } catch (error) {
         return res.status(500).json({
             success: false,
@@ -394,12 +408,12 @@ export const clientsTotalInvestment = async (req, res) => {
     }
 }
 
-export const addClientFund = async ( req, res) => {
+export const addClientFund = async (req, res) => {
     try {
-        
+
         const { clientId, amount } = req.body;
 
-        if (!clientId || !amount ) {
+        if (!clientId || !amount) {
             return res.status(400).json({
                 success: false,
                 message: "All fields are required"
@@ -418,7 +432,7 @@ export const addClientFund = async ( req, res) => {
         });
 
     } catch (error) {
-        
+
         return res.status(500).json({
             success: false,
             message: "Internal server error",
@@ -428,9 +442,9 @@ export const addClientFund = async ( req, res) => {
 }
 
 export const getTotalInterest = async (req, res) => {
-    
+
     try {
-        
+
         const totalInterest = await Payout.aggregate([
             {
                 $match: { payoutType: 'debit' }
@@ -459,9 +473,9 @@ export const getTotalInterest = async (req, res) => {
             message: "Total interest fetched successfully",
             data: totalInterest[0].totalInterest
         });
-        
+
     } catch (error) {
-        
+
         return res.status(500).json({
             success: false,
             message: "Internal server error",
@@ -471,10 +485,10 @@ export const getTotalInterest = async (req, res) => {
 }
 
 export const createPayout = async (req, res) => {
-    
+
     try {
-        
-        const { email, amount } = req.body;
+
+        const { email, amount, date } = req.body;
 
         if (!email || !amount) {
             return res.status(400).json({
@@ -483,7 +497,8 @@ export const createPayout = async (req, res) => {
             });
         }
 
-        const client = await Client.findOne({email})
+        const client = await Client.findOne({ email })
+        const admin = await Admin.findById(req.user.id);
 
         if (!client) {
             return res.status(404).json({
@@ -496,16 +511,23 @@ export const createPayout = async (req, res) => {
             client: client._id,
             amount: amount,
             payoutType: "debit",
-            payoutDate: new Date(),
+            payoutDate: date ? date : new Date(),
             status: "completed"
         });
+
+        client.totalInterest = client.totalInterest + amount;
+        client.updatedAt = new Date();
+        await client.save();
+
+        admin.totalInterest = admin.totalInterest + amount;
+        await admin.save();
 
         return res.status(201).json({
             success: true,
             message: "Payout created successfully",
             data: newPayout
         });
-        
+
     } catch (error) {
         return res.status(500).json({
             success: false,
@@ -517,10 +539,12 @@ export const createPayout = async (req, res) => {
 
 export const getAllPayouts = async (req, res) => {
     try {
-        
+
+        const { payoutType } = req.body
+
         const payouts = await Payout.find()
             .where('payoutType')
-            .equals('debit')
+            .equals(payoutType)
             .populate({
                 path: 'client',
                 select: '-password -token -__v -createdAt -updatedAt -_id -totalInvestment -totalWithdrawn -totalInterest -totalBalance -transactionRequests -statements -role -bankDetails',
@@ -529,15 +553,8 @@ export const getAllPayouts = async (req, res) => {
                     select: '-__v -createdAt -updatedAt -_id -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
                 }
             })
-            .sort({ createdAt: -1 })
-            .lean();
+            .sort({ payoutDate: -1 });
 
-        if (payouts.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "No payouts found"
-            });
-        }
 
         return res.status(200).json({
             success: true,
@@ -546,7 +563,7 @@ export const getAllPayouts = async (req, res) => {
         });
 
     } catch (error) {
-        
+
         return res.status(500).json({
             success: false,
             message: "Internal server error",
@@ -556,13 +573,13 @@ export const getAllPayouts = async (req, res) => {
 }
 
 export const getPayoutByStatus = async (req, res) => {
-    
+
     try {
 
         const { status } = req.params;
 
         console.log(status);
-        
+
         if (!status) {
             return res.status(400).json({
                 success: false,
@@ -596,10 +613,10 @@ export const getPayoutByStatus = async (req, res) => {
             message: "All payouts fetched successfully",
             data: payouts
         });
-        
+
 
     } catch (error) {
-        
+
         return res.status(500).json({
             success: false,
             message: "Internal server error",
@@ -613,7 +630,7 @@ export const getAllWithdrawalsRequest = async (req, res) => {
     try {
 
         const { status } = req.params;
-        
+
         const withdrawalsRequest = await TransactionRequest.find()
             .where('type').equals('withdraw')
             .where('status').equals(status)
@@ -665,7 +682,7 @@ export const toggleWithdrawalRequest = async (req, res) => {
 
         const request = await TransactionRequest.findById(id);
         const client = await Client.findById(request.client);
-    
+
         if (!request) {
             return res.status(404).json({
                 success: false,
