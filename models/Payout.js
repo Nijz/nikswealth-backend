@@ -23,7 +23,6 @@ const payoutSchema = new mongoose.Schema({
 
     payoutDate: {
         type: Date,
-        default: Date.now,
     },
 
     status: {

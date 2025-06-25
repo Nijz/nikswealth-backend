@@ -10,7 +10,7 @@ const investmentSchema = new mongoose.Schema({
 
     amount: {
         type: Number,
-        required: true, 
+        required: true,
     },
 
     lockInStartDate: {
@@ -41,7 +41,6 @@ const investmentSchema = new mongoose.Schema({
 
     createdAt: {
         type: Date,
-        default: Date.now,
     },
 
     updatedAt: {
@@ -59,11 +58,11 @@ investmentSchema.pre('validate', function (next) {
     next();
 });
 
-investmentSchema.post('save', async function() {
+investmentSchema.post('save', async function () {
     const clientId = this.client;
     const result = await mongoose.model('Investment').aggregate([
-        { $match: { client: clientId }},
-        { $group: { _id: null, totalAmount: {$sum: "$amount"} } }
+        { $match: { client: clientId } },
+        { $group: { _id: null, totalAmount: { $sum: "$amount" } } }
     ])
 
     const total = result.length > 0 ? result[0].totalAmount : 0;
