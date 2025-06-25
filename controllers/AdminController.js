@@ -238,9 +238,10 @@ export const getClientById = async (req, res) => {
 
         const client = await Client.findById(id)
             .populate('bankDetails')
-            .populate()
-            .select('-password -token -__v -createdAt -updatedAt -_id')
-            .lean();
+            .populate({
+                path: 'investments',
+            })
+            .select('-password -token -__v -createdAt -updatedAt')
 
         return res.status(200).json({
             success: true,
@@ -411,7 +412,7 @@ export const clientsTotalInvestment = async (req, res) => {
 export const addClientFund = async (req, res) => {
     try {
 
-        const { clientId, amount } = req.body;
+        const { clientId, amount, date } = req.body;
 
         if (!clientId || !amount) {
             return res.status(400).json({
@@ -422,7 +423,20 @@ export const addClientFund = async (req, res) => {
 
         const investment = await Investment.create({
             client: clientId,
-            amount: amount
+            amount: amount,
+            createdAt: date ? date : new Date(),
+        })
+
+        const client = await Client.findById(clientId);
+        client.investments.push(investment._id);
+        await client.save();
+
+        const payout = await Payout.create({
+            client: clientId,
+            amount: amount,
+            payoutType: "credit",
+            payoutDate: date ? date : new Date(),
+            status: 'completed'
         })
 
         return res.status(201).json({
