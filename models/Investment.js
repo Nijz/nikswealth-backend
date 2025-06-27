@@ -16,7 +16,6 @@ const investmentSchema = new mongoose.Schema({
     lockInStartDate: {
         type: Date,
         required: true,
-        default: Date.now,
     },
 
     lockInEndDate: {

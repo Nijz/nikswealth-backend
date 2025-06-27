@@ -161,13 +161,19 @@ export const createClient = async (req, res) => {
         const amountInvested = await Investment.create({
             client: newClient._id,
             amount: amount,
+            lockInStartDate: date ? date : new Date(),
+            createdAt: date ? date : new Date(),
+            updatedAt: date ? date : new Date(),
         })
 
         newClient.investments.push(amountInvested._id);
         await newClient.save();
 
+        console.log('user-id', req.user.id);
         const adminProfile = await Admin.findById(req.user.id);
+        console.log('admin-total-fund before', adminProfile.totalFunds);
         adminProfile.totalFunds = adminProfile.totalFunds + amount;
+        console.log('admin-total-fund after', adminProfile.totalFunds);
         await adminProfile.save();
 
         const payout = await Payout.create({
@@ -240,6 +246,7 @@ export const getClientById = async (req, res) => {
             .populate('bankDetails')
             .populate({
                 path: 'investments',
+                options: { sort: { createdAt: -1 } }
             })
             .select('-password -token -__v -createdAt -updatedAt')
 
@@ -309,9 +316,12 @@ export const clientChangePassword = async (req, res) => {
 
 export const getAdminProfile = async (req, res) => {
     try {
+
+
         const admin = await Admin.findById(req.user.id)
-            .select('-password -token -__v -createdAt -updatedAt -_id')
-            .lean();
+        if (admin.totalFunds < 0) admin.totalFunds = 0;
+        if (admin.totalInterest < 0) admin.totalInterest = 0;
+        await admin.save();
 
         return res.status(200).json({
             success: true,
@@ -424,6 +434,7 @@ export const addClientFund = async (req, res) => {
         const investment = await Investment.create({
             client: clientId,
             amount: amount,
+            lockInStartDate: date ? date : new Date(),
             createdAt: date ? date : new Date(),
         })
 
@@ -438,6 +449,10 @@ export const addClientFund = async (req, res) => {
             payoutDate: date ? date : new Date(),
             status: 'completed'
         })
+
+        const admin = await Admin.findById(req.user.id);
+        admin.totalFunds += amount;
+        await admin.save();
 
         return res.status(201).json({
             success: true,
@@ -650,14 +665,13 @@ export const getAllWithdrawalsRequest = async (req, res) => {
             .where('status').equals(status)
             .populate({
                 path: 'client',
-                select: '-password -token -__v -createdAt -updatedAt -_id -totalInvestment -totalWithdrawn -totalInterest -totalBalance -transactionRequests -statements -role -bankDetails',
+                select: '-password -token -__v -createdAt -updatedAt -_id -totalBalance -statements -role',
                 populate: {
                     path: 'investments',
                     select: '-__v -createdAt -updatedAt -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
                 }
             })
             .sort({ createdAt: -1 })
-            .lean();
 
         if (withdrawalsRequest.length === 0) {
             return res.status(404).json({
@@ -673,6 +687,106 @@ export const getAllWithdrawalsRequest = async (req, res) => {
         });
 
     } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+
+}
+
+export const getAllRequests = async (req, res) => {
+
+    try {
+
+        const requests = await TransactionRequest.find()
+            .populate({
+                path: 'client',
+                select: '-password -token -__v -createdAt -updatedAt -_id -totalBalance -statements -role',
+                populate: {
+                    path: 'investments',
+                    select: '-__v -createdAt -updatedAt -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
+                }
+            })
+            .sort({ createdAt: -1 })
+
+        return res.status(200).json({
+            success: true,
+            message: "All requests fetched successfully",
+            data: requests
+        });
+
+    } catch (error) {
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+}
+
+export const approveAddAmountRequest = async (req, res) => {
+
+    try {
+
+        const { clientId } = req.params
+        const { amount } = req.body
+
+        if (!clientId || !amount) {
+            return res.status(400).json({
+                success: false,
+                message: "All fields are required"
+            });
+        }
+
+        const request = await TransactionRequest.findOne({ client: clientId, type: 'add_amount', status: 'pending' })
+
+        if (!request) {
+            return res.status(404).json({
+                success: false,
+                message: "Request not found"
+            });
+        }
+
+        request.amount = amount;
+        request.status = 'approved';
+        request.respondedAt = new Date();
+        await request.save();
+
+        const client = await Client.findById(clientId);
+        client.totalInvestment += amount;
+
+        const payout = await Payout.create({
+            client: clientId,
+            amount: amount,
+            payoutType: "credit",
+            payoutDate: request.createdAt,
+            status: 'completed'
+        });
+
+        const investment = await Investment.create({
+            client: clientId,
+            amount: amount,
+            lockInStartDate: request.createdAt,
+            isRenewed: false,
+            status: 'locked',
+            createdAt: request.createdAt,
+            updatedAt: request.createdAt,
+        })
+
+        client.investments.push(investment._id);
+        await client.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Add amount request approved",
+            data: request
+        });
+
+    } catch (error) {
+
         return res.status(500).json({
             success: false,
             message: "Internal server error",
@@ -737,3 +851,208 @@ export const toggleWithdrawalRequest = async (req, res) => {
         });
     }
 }
+
+export const deleteClient = async (req, res) => {
+    try {
+
+        const { clientId } = req.params;
+        console.log(clientId);
+
+        if (!clientId) {
+            return res.status(400).json({
+                success: false,
+                message: "Client ID is required"
+            });
+        }
+
+        const client = await Client.findById(clientId);
+
+        if (!client) {
+            return res.status(404).json({
+                success: false,
+                message: "Client not found"
+            });
+        }
+
+        const admin = await Admin.findById(req.user.id);
+
+        admin.totalFunds = admin.totalFunds - client.totalInvestment;
+        admin.totalInterest = admin.totalInterest - client.totalInterest;
+        if (admin.totalFunds < 0) admin.totalFunds = 0;
+        if (admin.totalInterest < 0) admin.totalInterest = 0;
+
+        await admin.save();
+
+
+        if (client.bankDetails) {
+            await BankDetails.findByIdAndDelete(client.bankDetails);
+        }
+
+        await Payout.deleteMany({ client: clientId })
+            ;
+        if (client.investments.length > 0) {
+            await Investment.deleteMany({ _id: { $in: client.investments } });
+        }
+
+        if (client.transactionRequests.length > 0) {
+            await TransactionRequest.deleteMany({ _id: { $in: client.transactionRequests } });
+        }
+
+        if (client.statements.length > 0) {
+            await Payout.deleteMany({ _id: { $in: client.statements } });
+        }
+
+        await Client.findByIdAndDelete(clientId);
+
+        return res.status(200).json({
+            success: true,
+            message: "Client and associated data deleted successfully"
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+};
+
+export const editClient = async (req, res) => {
+
+    try {
+
+        const { clientId, name, email, phone, password, oldPassword } = req.body;
+
+        console.log(clientId, name, email, phone, password, oldPassword);
+
+        if (!clientId) {
+            return res.status(400).json({
+                success: false,
+                message: "Client ID is required"
+            });
+        }
+
+        const client = await Client.findById(clientId);
+
+
+        if (name !== null && name !== '') {
+            client.name = name;
+        }
+
+
+        if (email !== null && email !== '') {
+            client.email = email;
+        }
+
+        if (phone !== null && phone !== '') {
+            client.phone = phone;
+        }
+
+        if (password !== null && password !== '' && oldPassword !== null && oldPassword !== '') {
+
+            const isPasswordValid = await bcrypt.compare(oldPassword, client.password);
+
+
+            if (!isPasswordValid) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Invalid password"
+                });
+            }
+
+            const hashedPassword = await bcrypt.hash(password, 10);
+
+            client.password = hashedPassword;
+        }
+
+
+        await client.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Client updated successfully",
+            data: client
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+
+}
+
+export const updateBankDetails = async (req, res) => {
+    try {
+
+        const { clientId } = req.params;
+        const { bankName, accountNumber, bankBranch, ifscCode } = req.body;
+
+        if (!clientId) {
+            return res.status(400).json({ success: false, message: "Client ID is required" });
+        }
+
+
+        const client = await Client.findById(clientId);
+        const bank = await BankDetails.findById(client.bankDetails);
+
+        if (!client) {
+            return res.status(404).json({ success: false, message: "Client not found" });
+        }
+
+
+        if (bankName !== null && bankName !== '') {
+            bank.bankName = bankName;
+            client.bankDetails.bankName = bankName;
+        }
+
+
+        if (accountNumber !== null && accountNumber !== '') {
+            bank.accountNumber = accountNumber;
+            client.bankDetails.accountNumber = accountNumber;
+        }
+
+
+        if (bankBranch !== null && bankBranch !== '') {
+            bank.bankBranch = bankBranch;
+            client.bankDetails.bankBranch = bankBranch;
+        }
+
+
+        if (ifscCode !== null && ifscCode !== '') {
+            bank.ifscCode = ifscCode;
+            client.bankDetails.ifscCode = ifscCode;
+        }
+
+        await bank.save();
+        await client.save();
+        console.log('Client', client);
+        console.log('Bank', bank);
+
+        const updatedClient = await Client.findById(clientId)
+            .populate('bankDetails')
+            .populate({
+                path: 'investments',
+                options: { sort: { createdAt: -1 } }
+            })
+            .select('-password -token -__v -createdAt -updatedAt')
+
+
+
+        return res.status(200).json({
+            success: true,
+            message: "Bank details updated successfully",
+            data: updatedClient
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+};
