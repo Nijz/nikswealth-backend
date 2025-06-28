@@ -4,6 +4,8 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import adminRoutes from "./routes/adminRoutes.js";
+import clientRoutes from "./routes/clientRoutes.js"
+
 dotenv.config();
 
 const app = express();
@@ -19,6 +21,7 @@ app.use(cors({
 }))
 
 app.use("/api/v1/admin/", adminRoutes)
+app.use("/api/v1/client/", clientRoutes)
 
 // deafult 
 app.get("/", (req, res) => {

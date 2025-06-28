@@ -154,6 +154,7 @@ export const createClient = async (req, res) => {
             password: hashedPassword,
             name: name,
             phone: phone,
+            role: 'client',
             bankDetails: newBankDetails._id,
             createdAt: date,
         })
@@ -518,6 +519,7 @@ export const createPayout = async (req, res) => {
     try {
 
         const { email, amount, date } = req.body;
+        console.log(req.body)
 
         if (!email || !amount) {
             return res.status(400).json({
@@ -1052,6 +1054,130 @@ export const updateBankDetails = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Internal server error",
+            error: error.message
+        });
+    }
+};
+
+export const searchClient = async (req, res) => {
+    try {
+
+        console.log(req.body);
+        const { name } = req.body;
+
+        let query = {};
+        if (name) {
+            query.name = { $regex: name, $options: 'i' };
+        }
+
+        console.log(query);
+
+        if (Object.keys(query).length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "At least one of 'name' or 'email' must be provided for search."
+            });
+        }
+
+        const clients = await Client.find(query)
+            .populate('bankDetails')
+            .populate({
+                path: 'investments',
+                options: { sort: { createdAt: -1 } }
+            })
+            .select('-password -token -__v -createdAt -updatedAt');
+
+        console.log(clients);
+        return res.status(200).json({
+            success: true,
+            message: `${clients.length} client(s) found.`,
+            data: clients
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+};
+
+export const withDrawFund = async (req, res) => {
+    try {
+        const { clientId, investmentId } = req.body;
+
+        if (!clientId || !investmentId) {
+            return res.status(400).json({
+                success: false,
+                message: "Client ID and Investment ID are required."
+            });
+        }
+
+        // Fetch all needed data in parallel
+        const [client, investment, admin] = await Promise.all([
+            Client.findById(clientId),
+            Investment.findById(investmentId),
+            Admin.findById(req.user.id)
+        ]);
+
+        // Validate data existence
+        if (!client) {
+            return res.status(404).json({ success: false, message: "Client not found." });
+        }
+
+        if (!investment) {
+            return res.status(404).json({ success: false, message: "Investment not found." });
+        }
+
+        // Check investment unlock status
+        if (investment.status === 'locked') {
+            return res.status(400).json({
+                success: false,
+                message: `${investment.amount} is not yet unlocked for withdrawal.`
+            });
+        }
+
+        // Update admin funds and create payout
+        admin.totalFunds -= investment.amount;
+        client.totalWithdrawn += investment.amount;
+        client.totalInvestment -= investment.amount;
+
+        await Payout.create({
+            client: clientId,
+            amount: investment.amount,
+            payoutType: 'debit',
+            payoutDate: new Date(),
+            status: 'completed'
+        });
+
+        // Delete investment and save changes
+        const [_, __] = await Promise.all([
+            admin.save(),
+            client.save(),
+            Investment.findByIdAndDelete(investmentId)
+        ]);
+
+        // Fetch updated client info
+        const updatedClient = await Client.findById(clientId)
+            .populate('bankDetails')
+            .populate({
+                path: 'investments',
+                options: { sort: { createdAt: -1 } }
+            })
+            .select('-password -token -__v -createdAt -updatedAt');
+
+        return res.status(200).json({
+            success: true,
+            message: "Fund withdrawn successfully.",
+            data: updatedClient
+        });
+
+    } catch (error) {
+        console.error('❌ Withdraw Fund Error:', error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error.",
             error: error.message
         });
     }
