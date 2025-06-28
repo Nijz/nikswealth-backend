@@ -23,6 +23,7 @@ const payoutSchema = new mongoose.Schema({
 
     payoutDate: {
         type: Date,
+        // make sure to set the timezone to +05:30 for the date (IST)
     },
 
     status: {

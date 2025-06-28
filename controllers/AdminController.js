@@ -7,6 +7,7 @@ import TransactionRequest from '../models/TranscationRequest.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
+import { DateTime } from 'luxon';
 
 export const createAdmin = async (req, res) => {
 
@@ -124,6 +125,8 @@ export const createClient = async (req, res) => {
 
         const { email, password, name, phone, bankName, accountNumber, ifscCode, bankBranch, amount, date } = req.body;
 
+        const istDate = DateTime.fromISO(date, { zone: 'Asia/Kolkata' }).startOf('day').toISO()
+
         if (!email || !password || !name || !phone || !bankName || !accountNumber || !ifscCode || !bankBranch || !amount) {
             return res.status(409).json({
                 success: false,
@@ -156,32 +159,30 @@ export const createClient = async (req, res) => {
             phone: phone,
             role: 'client',
             bankDetails: newBankDetails._id,
-            createdAt: date,
+            createdAt: date ? istDate : new Date(),
         })
 
         const amountInvested = await Investment.create({
             client: newClient._id,
             amount: amount,
-            lockInStartDate: date ? date : new Date(),
-            createdAt: date ? date : new Date(),
-            updatedAt: date ? date : new Date(),
+            lockInStartDate: date ? istDate : new Date(),
+            createdAt: date ? istDate : new Date(),
+            updatedAt: date ? istDate : new Date(),
         })
 
         newClient.investments.push(amountInvested._id);
         await newClient.save();
 
-        console.log('user-id', req.user.id);
+
         const adminProfile = await Admin.findById(req.user.id);
-        console.log('admin-total-fund before', adminProfile.totalFunds);
         adminProfile.totalFunds = adminProfile.totalFunds + amount;
-        console.log('admin-total-fund after', adminProfile.totalFunds);
         await adminProfile.save();
 
         const payout = await Payout.create({
             client: newClient._id,
             amount: amount,
             payoutType: "credit",
-            payoutDate: date ? date : new Date(),
+            payoutDate: date ? istDate : new Date(),
             status: 'completed'
         })
 
@@ -425,6 +426,8 @@ export const addClientFund = async (req, res) => {
 
         const { clientId, amount, date } = req.body;
 
+        const istDate = DateTime.fromISO(date, { zone: 'Asia/Kolkata' }).startOf('day').toISO()
+
         if (!clientId || !amount) {
             return res.status(400).json({
                 success: false,
@@ -435,8 +438,8 @@ export const addClientFund = async (req, res) => {
         const investment = await Investment.create({
             client: clientId,
             amount: amount,
-            lockInStartDate: date ? date : new Date(),
-            createdAt: date ? date : new Date(),
+            lockInStartDate: date ? istDate : new Date(),
+            createdAt: date ? istDate : new Date(),
         })
 
         const client = await Client.findById(clientId);
@@ -447,7 +450,7 @@ export const addClientFund = async (req, res) => {
             client: clientId,
             amount: amount,
             payoutType: "credit",
-            payoutDate: date ? date : new Date(),
+            payoutDate: date ? istDate : new Date(),
             status: 'completed'
         })
 
@@ -519,8 +522,9 @@ export const createPayout = async (req, res) => {
     try {
 
         const { email, amount, date } = req.body;
-        console.log(req.body)
+        const istDate = DateTime.fromISO(date, { zone: 'Asia/Kolkata' }).startOf('day').toISO()
 
+        console.log('pass-1');
         if (!email || !amount) {
             return res.status(400).json({
                 success: false,
@@ -528,9 +532,11 @@ export const createPayout = async (req, res) => {
             });
         }
 
+        console.log('pass-2');
         const client = await Client.findOne({ email })
         const admin = await Admin.findById(req.user.id);
 
+        console.log('pass-3');
         if (!client) {
             return res.status(404).json({
                 success: false,
@@ -538,21 +544,25 @@ export const createPayout = async (req, res) => {
             });
         }
 
+        console.log('pass-4');
         const newPayout = await Payout.create({
             client: client._id,
             amount: amount,
             payoutType: "debit",
-            payoutDate: date ? date : new Date(),
+            payoutDate: date ? istDate : new Date(),
             status: "completed"
         });
 
+        console.log('pass-5');
         client.totalInterest = client.totalInterest + amount;
         client.updatedAt = new Date();
         await client.save();
 
+        console.log('pass-6');
         admin.totalInterest = admin.totalInterest + amount;
         await admin.save();
 
+        console.log('pass-7');
         return res.status(201).json({
             success: true,
             message: "Payout created successfully",
@@ -562,7 +572,7 @@ export const createPayout = async (req, res) => {
     } catch (error) {
         return res.status(500).json({
             success: false,
-            message: "Internal server error",
+            message: error.message,
             error: error.message
         });
     }
