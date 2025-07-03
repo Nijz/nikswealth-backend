@@ -318,8 +318,6 @@ export const clientChangePassword = async (req, res) => {
 
 export const getAdminProfile = async (req, res) => {
     try {
-
-
         const admin = await Admin.findById(req.user.id)
         if (admin.totalFunds < 0) admin.totalFunds = 0;
         if (admin.totalInterest < 0) admin.totalInterest = 0;
@@ -521,7 +519,7 @@ export const createPayout = async (req, res) => {
 
     try {
 
-        const { email, amount, date } = req.body;
+        const { name, amount, date, refNo } = req.body;
         const istDate = DateTime.fromISO(date, { zone: 'Asia/Kolkata' }).startOf('day').toISO()
 
         console.log('pass-1');
@@ -533,7 +531,7 @@ export const createPayout = async (req, res) => {
         }
 
         console.log('pass-2');
-        const client = await Client.findOne({ email })
+        const client = await Client.findOne({ name })
         const admin = await Admin.findById(req.user.id);
 
         console.log('pass-3');
@@ -548,6 +546,7 @@ export const createPayout = async (req, res) => {
         const newPayout = await Payout.create({
             client: client._id,
             amount: amount,
+            reference: refNo,
             payoutType: "debit",
             payoutDate: date ? istDate : new Date(),
             status: "completed"

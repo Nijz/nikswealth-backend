@@ -14,6 +14,7 @@ const clientSchema = new mongoose.Schema({
         type: String,
         required: true,
         minlength: 6,
+        trim: true,
     },
 
     name: {

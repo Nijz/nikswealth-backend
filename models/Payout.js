@@ -14,6 +14,12 @@ const payoutSchema = new mongoose.Schema({
         min: 0,
     },
 
+    reference: {
+        type: String,
+        required: true,
+        trim: true,
+    },
+
     payoutType: {
         type: String,
         enum: ['credit', 'debit'],
