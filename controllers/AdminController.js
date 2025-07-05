@@ -523,7 +523,7 @@ export const createPayout = async (req, res) => {
         const istDate = DateTime.fromISO(date, { zone: 'Asia/Kolkata' }).startOf('day').toISO()
 
         console.log('pass-1');
-        if (!email || !amount) {
+        if (!name || !amount) {
             return res.status(400).json({
                 success: false,
                 message: "All fields are required"

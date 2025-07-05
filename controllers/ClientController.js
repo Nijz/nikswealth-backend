@@ -70,7 +70,7 @@ export const getClientData = async (req, res) => {
                 path: 'investments',
                 options: { sort: { createdAt: -1 } }
             })
-            .select('-password -token -__v -createdAt -updatedAt')
+            .select('-token -__v -createdAt -updatedAt')
 
         if (client.totalInvestment < 0) client.totalInvestment = 0;
         if (client.totalInterest < 0) client.totalInterest = 0;
@@ -260,29 +260,43 @@ export const getClientPayouts = async (req, res) => {
             })
         }
 
-        const payouts = await Payout.find({ client: clientId, payoutType: payoutType })
-            .populate({
-                path: 'client',
-                select: '-password -token -__v -createdAt -updatedAt -_id -totalInvestment -totalWithdrawn -totalInterest -totalBalance -statements -role -bankDetails',
-                populate: {
-                    path: 'investments',
-                    select: '-__v -createdAt -updatedAt -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
-                }
-            })
-            .sort({ payoutDate: -1 });
+        if (payoutType === 'credit' || payoutType === 'debit') {
+            const payouts = await Payout.find({ client: clientId, payoutType: payoutType })
+                .populate({
+                    path: 'client',
+                    select: '-password -token -__v -createdAt -updatedAt -_id -totalInvestment -totalWithdrawn -totalInterest -totalBalance -statements -role -bankDetails',
+                    populate: {
+                        path: 'investments',
+                        select: '-__v -createdAt -updatedAt -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
+                    }
+                })
+                .sort({ payoutDate: -1 });
 
-        if (payouts.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "No payouts found"
+            return res.status(200).json({
+                success: true,
+                message: `${payoutType} payouts fetched successfully`,
+                data: payouts
+            })
+
+        } else {
+
+            const payouts = await Payout.find({ client: clientId })
+                .populate({
+                    path: 'client',
+                    select: '-password -token -__v -createdAt -updatedAt -_id -totalInvestment -totalWithdrawn -totalInterest -totalBalance -statements -role -bankDetails',
+                    populate: {
+                        path: 'investments',
+                        select: '-__v -createdAt -updatedAt -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
+                    }
+                })
+                .sort({ payoutDate: -1 });
+
+            return res.status(200).json({
+                success: true,
+                message: "All payouts fetched successfully",
+                data: payouts
             })
         }
-
-        return res.status(200).json({
-            success: true,
-            message: "All payouts fetched successfully",
-            data: payouts
-        })
 
     } catch (error) {
 
