@@ -154,7 +154,7 @@ export const createClient = async (req, res) => {
 
         const newClient = await Client.create({
             email: email,
-            password: hashedPassword,
+            password: password,
             name: name,
             phone: phone,
             role: 'client',
@@ -216,7 +216,7 @@ export const getAllClients = async (req, res) => {
             .populate({
                 path: 'investments'
             })
-            .select('-password -token -__v -totalBalance -role')
+            .select('-token -__v -totalBalance -role')
             .sort({ createdAt: -1 })
             .lean();
         return res.status(200).json({
@@ -250,7 +250,7 @@ export const getClientById = async (req, res) => {
                 path: 'investments',
                 options: { sort: { createdAt: -1 } }
             })
-            .select('-password -token -__v -createdAt -updatedAt')
+            .select('-token -__v -createdAt -updatedAt')
 
         return res.status(200).json({
             success: true,
@@ -287,7 +287,7 @@ export const clientChangePassword = async (req, res) => {
             });
         }
 
-        const isPasswordValid = await bcrypt.compare(password, client.password);
+        const isPasswordValid = client.password === oldPassword;
 
         if (!isPasswordValid) {
             return res.status(401).json({
@@ -298,7 +298,7 @@ export const clientChangePassword = async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-        client.password = hashedPassword;
+        client.password = newPassword;
         await client.save();
 
         return res.status(200).json({
@@ -422,9 +422,10 @@ export const clientsTotalInvestment = async (req, res) => {
 export const addClientFund = async (req, res) => {
     try {
 
-        const { clientId, amount, date } = req.body;
+        const { clientId, amount, date, lokeDate } = req.body;
 
         const istDate = DateTime.fromISO(date, { zone: 'Asia/Kolkata' }).startOf('day').toISO()
+        const lock = DateTime.fromISO(lokeDate, { zone: 'Asia/Kolkata' }).startOf('day').toISO()
 
         if (!clientId || !amount) {
             return res.status(400).json({
@@ -438,6 +439,7 @@ export const addClientFund = async (req, res) => {
             amount: amount,
             lockInStartDate: date ? istDate : new Date(),
             createdAt: date ? istDate : new Date(),
+            lockInEndDate: lock ? lock : new Date() + 1000 * 60 * 60 * 24 * 30,
         })
 
         const client = await Client.findById(clientId);
