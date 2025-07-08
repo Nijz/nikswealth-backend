@@ -5,7 +5,7 @@ dotenv.config();
 export const auth = (req, res, next) => {
 
     try {
-        
+
         const token = req.cookies.token || req.header("Authorization")?.replace("Bearer ", "");
 
         if (!token) {
@@ -16,12 +16,12 @@ export const auth = (req, res, next) => {
         }
 
         try {
-            
+
             const decode = jwt.verify(token, process.env.JWT_SECRET);
             req.user = decode;
 
         } catch (error) {
-            
+
             return res.status(401).json({
                 success: false,
                 message: "Invalid or expired token"
@@ -32,7 +32,7 @@ export const auth = (req, res, next) => {
         next();
 
     } catch (error) {
-        
+
         return res.status(500).json({
             success: false,
             message: "Internal server error",
@@ -44,8 +44,8 @@ export const auth = (req, res, next) => {
 export const isAdmin = (req, res, next) => {
 
     try {
-        
-        if(req.user.role !== 'admin') {
+
+        if (req.user.role !== 'admin') {
             return res.status(403).json({
                 success: false,
                 message: "Access denied, admin role required"
@@ -55,7 +55,7 @@ export const isAdmin = (req, res, next) => {
         next();
 
     } catch (error) {
-        
+
         return res.status(500).json({
             success: false,
             message: "Internal server error",
@@ -67,8 +67,8 @@ export const isAdmin = (req, res, next) => {
 export const isClient = (req, res, next) => {
 
     try {
-        
-        if(req.user.role !== 'client') {
+
+        if (req.user.role !== 'client') {
             return res.status(403).json({
                 success: false,
                 message: "Access denied, client role required"
@@ -78,7 +78,7 @@ export const isClient = (req, res, next) => {
         next();
 
     } catch (error) {
-        
+
         return res.status(500).json({
             success: false,
             message: "Internal server error",
