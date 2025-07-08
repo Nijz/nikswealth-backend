@@ -22,19 +22,18 @@ const payoutSchema = new mongoose.Schema({
 
     payoutType: {
         type: String,
-        enum: ['credit', 'debit'],
-        default: 'credit',
+        enum: ['credit', 'debit', 'return'],
+        required: true,
+    },
+
+    clientPayoutType: {
+        type: String,
+        enum: ['credit', 'withdraw', 'return'],
         required: true,
     },
 
     payoutDate: {
         type: Date,
-    },
-
-    status: {
-        type: String,
-        enum: ['pending', 'completed', 'failed'],
-        default: 'pending',
     },
 
 })

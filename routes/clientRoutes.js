@@ -6,7 +6,7 @@ const router = express.Router();
 
 router.post('/login', clientLogin)
 router.get('/profile', auth, isClient, getClientData)
-router.get('/payouts/:payoutType/:clientId', auth, isClient, getClientPayouts)
+router.get('/payouts/:clientPayoutType', auth, isClient, getClientPayouts)
 
 
 export default router;

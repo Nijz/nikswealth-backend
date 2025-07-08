@@ -32,11 +32,9 @@ export const createAdmin = async (req, res) => {
             })
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-
         const newAdmin = await Admin.create({
             email: email,
-            password: hashedPassword,
+            password: password,
             name: name,
             phone: phone,
             role: 'admin',
@@ -119,15 +117,74 @@ export const loginAdmin = async (req, res) => {
     }
 }
 
+export const updateAdminProfile = async (req, res) => {
+
+    try {
+
+        const { name, phone, email, password, oldPassword } = req.body;
+
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "Admin ID is required"
+            });
+        }
+
+        const admin = await Admin.findById(req.user.id)
+
+        if (name !== null && name !== '') {
+            admin.name = name;
+        }
+
+        if (phone !== null && phone !== '') {
+            admin.phone = phone;
+        }
+
+        if (email !== null && email !== '') {
+            admin.email = email;
+        }
+
+        if (password !== null && password !== '' && oldPassword !== null && oldPassword !== '') {
+
+            if (oldPassword !== admin.password) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Invalid old password"
+                });
+            }
+
+            admin.password = password;
+        }
+
+        await admin.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Admin profile updated successfully",
+            data: admin
+        });
+
+    } catch (error) {
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+
+}
+
 export const createClient = async (req, res) => {
 
     try {
 
-        const { email, password, name, phone, bankName, accountNumber, ifscCode, bankBranch, amount, date } = req.body;
+        const { email, password, name, phone, bankName, accountNumber, ifscCode, bankBranch, amount, date, lockDate, refNo } = req.body;
 
         const istDate = DateTime.fromISO(date, { zone: 'Asia/Kolkata' }).startOf('day').toISO()
+        const lock = DateTime.fromISO(lockDate, { zone: 'Asia/Kolkata' }).startOf('day').toISO()
 
-        if (!email || !password || !name || !phone || !bankName || !accountNumber || !ifscCode || !bankBranch || !amount) {
+        if (!email || !password || !name || !phone || !bankName || !accountNumber || !ifscCode || !bankBranch || !amount || !refNo) {
             return res.status(409).json({
                 success: false,
                 message: "All fields are required"
@@ -143,8 +200,6 @@ export const createClient = async (req, res) => {
             })
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-
         const newBankDetails = await BankDetails.create({
             bankName: bankName,
             accountNumber: accountNumber,
@@ -159,15 +214,16 @@ export const createClient = async (req, res) => {
             phone: phone,
             role: 'client',
             bankDetails: newBankDetails._id,
-            createdAt: date ? istDate : new Date(),
+            createdAt: istDate,
         })
 
         const amountInvested = await Investment.create({
             client: newClient._id,
             amount: amount,
-            lockInStartDate: date ? istDate : new Date(),
-            createdAt: date ? istDate : new Date(),
-            updatedAt: date ? istDate : new Date(),
+            lockInStartDate: istDate,
+            lockInEndDate: lock,
+            createdAt: istDate,
+            updatedAt: istDate,
         })
 
         newClient.investments.push(amountInvested._id);
@@ -181,9 +237,10 @@ export const createClient = async (req, res) => {
         const payout = await Payout.create({
             client: newClient._id,
             amount: amount,
+            reference: refNo,
             payoutType: "credit",
-            payoutDate: date ? istDate : new Date(),
-            status: 'completed'
+            clientPayoutType: "debit",
+            payoutDate: istDate,
         })
 
         const clientDetails = await Client.findById(newClient._id)
@@ -422,10 +479,16 @@ export const clientsTotalInvestment = async (req, res) => {
 export const addClientFund = async (req, res) => {
     try {
 
-        const { clientId, amount, date, lokeDate } = req.body;
-
+        const { clientId, amount, date, lockDate, refNo } = req.body;
+        console.log(
+            "data: ",
+            clientId,
+            amount,
+            date,
+            lockDate
+        );
         const istDate = DateTime.fromISO(date, { zone: 'Asia/Kolkata' }).startOf('day').toISO()
-        const lock = DateTime.fromISO(lokeDate, { zone: 'Asia/Kolkata' }).startOf('day').toISO()
+        const lock = DateTime.fromISO(lockDate, { zone: 'Asia/Kolkata' }).startOf('day').toISO()
 
         if (!clientId || !amount) {
             return res.status(400).json({
@@ -439,24 +502,25 @@ export const addClientFund = async (req, res) => {
             amount: amount,
             lockInStartDate: date ? istDate : new Date(),
             createdAt: date ? istDate : new Date(),
-            lockInEndDate: lock ? lock : new Date() + 1000 * 60 * 60 * 24 * 30,
+            lockInEndDate: lock,
         })
 
         const client = await Client.findById(clientId);
-        client.investments.push(investment._id);
-        await client.save();
+        const admin = await Admin.findById(req.user.id);
 
         const payout = await Payout.create({
-            client: clientId,
+            client: client._id,
             amount: amount,
+            reference: refNo,
             payoutType: "credit",
-            payoutDate: date ? istDate : new Date(),
-            status: 'completed'
+            clientPayoutType: "debit",
+            payoutDate: istDate,
         })
 
-        const admin = await Admin.findById(req.user.id);
+        client.investments.push(investment._id);
         admin.totalFunds += amount;
         await admin.save();
+        await client.save();
 
         return res.status(201).json({
             success: true,
@@ -468,7 +532,7 @@ export const addClientFund = async (req, res) => {
 
         return res.status(500).json({
             success: false,
-            message: "Internal server error",
+            message: error.message,
             error: error.message
         });
     }
@@ -524,7 +588,6 @@ export const createPayout = async (req, res) => {
         const { name, amount, date, refNo } = req.body;
         const istDate = DateTime.fromISO(date, { zone: 'Asia/Kolkata' }).startOf('day').toISO()
 
-        console.log('pass-1');
         if (!name || !amount) {
             return res.status(400).json({
                 success: false,
@@ -532,11 +595,9 @@ export const createPayout = async (req, res) => {
             });
         }
 
-        console.log('pass-2');
         const client = await Client.findOne({ name })
         const admin = await Admin.findById(req.user.id);
 
-        console.log('pass-3');
         if (!client) {
             return res.status(404).json({
                 success: false,
@@ -544,26 +605,22 @@ export const createPayout = async (req, res) => {
             });
         }
 
-        console.log('pass-4');
         const newPayout = await Payout.create({
             client: client._id,
             amount: amount,
             reference: refNo,
-            payoutType: "debit",
-            payoutDate: date ? istDate : new Date(),
-            status: "completed"
+            payoutType: "return",
+            clientPayoutType: "return",
+            payoutDate: istDate
         });
 
-        console.log('pass-5');
         client.totalInterest = client.totalInterest + amount;
         client.updatedAt = new Date();
+        admin.totalInterest = admin.totalInterest + amount;
+
+        await admin.save();
         await client.save();
 
-        console.log('pass-6');
-        admin.totalInterest = admin.totalInterest + amount;
-        await admin.save();
-
-        console.log('pass-7');
         return res.status(201).json({
             success: true,
             message: "Payout created successfully",
@@ -659,204 +716,6 @@ export const getPayoutByStatus = async (req, res) => {
 
     } catch (error) {
 
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error",
-            error: error.message
-        });
-    }
-}
-
-export const getAllWithdrawalsRequest = async (req, res) => {
-
-    try {
-
-        const { status } = req.params;
-
-        const withdrawalsRequest = await TransactionRequest.find()
-            .where('type').equals('withdraw')
-            .where('status').equals(status)
-            .populate({
-                path: 'client',
-                select: '-password -token -__v -createdAt -updatedAt -_id -totalBalance -statements -role',
-                populate: {
-                    path: 'investments',
-                    select: '-__v -createdAt -updatedAt -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
-                }
-            })
-            .sort({ createdAt: -1 })
-
-        if (withdrawalsRequest.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: `No withdrawal ${status} requests found`
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: `All ${status} withdrawal requests fetched successfully`,
-            data: withdrawalsRequest
-        });
-
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error",
-            error: error.message
-        });
-    }
-
-}
-
-export const getAllRequests = async (req, res) => {
-
-    try {
-
-        const requests = await TransactionRequest.find()
-            .populate({
-                path: 'client',
-                select: '-password -token -__v -createdAt -updatedAt -_id -totalBalance -statements -role',
-                populate: {
-                    path: 'investments',
-                    select: '-__v -createdAt -updatedAt -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
-                }
-            })
-            .sort({ createdAt: -1 })
-
-        return res.status(200).json({
-            success: true,
-            message: "All requests fetched successfully",
-            data: requests
-        });
-
-    } catch (error) {
-
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error",
-            error: error.message
-        });
-    }
-}
-
-export const approveAddAmountRequest = async (req, res) => {
-
-    try {
-
-        const { clientId } = req.params
-        const { amount } = req.body
-
-        if (!clientId || !amount) {
-            return res.status(400).json({
-                success: false,
-                message: "All fields are required"
-            });
-        }
-
-        const request = await TransactionRequest.findOne({ client: clientId, type: 'add_amount', status: 'pending' })
-
-        if (!request) {
-            return res.status(404).json({
-                success: false,
-                message: "Request not found"
-            });
-        }
-
-        request.amount = amount;
-        request.status = 'approved';
-        request.respondedAt = new Date();
-        await request.save();
-
-        const client = await Client.findById(clientId);
-        client.totalInvestment += amount;
-
-        const payout = await Payout.create({
-            client: clientId,
-            amount: amount,
-            payoutType: "credit",
-            payoutDate: request.createdAt,
-            status: 'completed'
-        });
-
-        const investment = await Investment.create({
-            client: clientId,
-            amount: amount,
-            lockInStartDate: request.createdAt,
-            isRenewed: false,
-            status: 'locked',
-            createdAt: request.createdAt,
-            updatedAt: request.createdAt,
-        })
-
-        client.investments.push(investment._id);
-        await client.save();
-
-        return res.status(200).json({
-            success: true,
-            message: "Add amount request approved",
-            data: request
-        });
-
-    } catch (error) {
-
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error",
-            error: error.message
-        });
-    }
-
-}
-
-export const toggleWithdrawalRequest = async (req, res) => {
-    try {
-
-        const { id, status } = req.params;
-
-        if (!id || !status || !['pending', 'approved', 'rejected'].includes(status)) {
-            return res.status(400).json({
-                success: false,
-                message: "Request ID is required"
-            });
-        }
-
-        const request = await TransactionRequest.findById(id);
-        const client = await Client.findById(request.client);
-
-        if (!request) {
-            return res.status(404).json({
-                success: false,
-                message: "Request not found"
-            });
-        }
-
-        if (request.status !== 'pending') {
-            return res.status(400).json({
-                success: false,
-                message: "Request is not pending"
-            });
-        }
-
-        request.status = 'approved';
-        request.respondedAt = new Date();
-        await request.save();
-
-        if (status === 'approved') {
-            const client = await Client.findById(request.client);
-            client.totalWithdrawn += request.amount;
-            client.totalBalance -= request.amount;
-            client.totalInvestment -= request.amount;
-            client.investments = client.investments.filter(investment => investment._id === request.investment._id);
-            await client.save();
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: `Withdrawal request ${status}`,
-        });
-
-    } catch (error) {
         return res.status(500).json({
             success: false,
             message: "Internal server error",
@@ -1116,8 +975,9 @@ export const searchClient = async (req, res) => {
 
 export const withDrawFund = async (req, res) => {
     try {
-        const { clientId, investmentId } = req.body;
+        const { clientId, investmentId, reference } = req.body;
 
+        console.log("Pass-1");
         if (!clientId || !investmentId) {
             return res.status(400).json({
                 success: false,
@@ -1125,6 +985,7 @@ export const withDrawFund = async (req, res) => {
             });
         }
 
+        console.log("Pass-2");
         // Fetch all needed data in parallel
         const [client, investment, admin] = await Promise.all([
             Client.findById(clientId),
@@ -1132,15 +993,18 @@ export const withDrawFund = async (req, res) => {
             Admin.findById(req.user.id)
         ]);
 
+        console.log("Pass-3");
         // Validate data existence
         if (!client) {
             return res.status(404).json({ success: false, message: "Client not found." });
         }
 
+        console.log("Pass-4");
         if (!investment) {
             return res.status(404).json({ success: false, message: "Investment not found." });
         }
 
+        console.log("Pass-5");
         // Check investment unlock status
         if (investment.status === 'locked') {
             return res.status(400).json({
@@ -1149,19 +1013,23 @@ export const withDrawFund = async (req, res) => {
             });
         }
 
+        console.log("Pass-6");
         // Update admin funds and create payout
         admin.totalFunds -= investment.amount;
         client.totalWithdrawn += investment.amount;
         client.totalInvestment -= investment.amount;
 
+        console.log("Pass-7");
         await Payout.create({
             client: clientId,
             amount: investment.amount,
+            reference: reference,
             payoutType: 'debit',
+            clientPayoutType: 'withdraw',
             payoutDate: new Date(),
-            status: 'completed'
         });
 
+        console.log("Pass-8");
         // Delete investment and save changes
         const [_, __] = await Promise.all([
             admin.save(),
@@ -1169,6 +1037,7 @@ export const withDrawFund = async (req, res) => {
             Investment.findByIdAndDelete(investmentId)
         ]);
 
+        console.log("Pass-9");
         // Fetch updated client info
         const updatedClient = await Client.findById(clientId)
             .populate('bankDetails')
@@ -1178,6 +1047,7 @@ export const withDrawFund = async (req, res) => {
             })
             .select('-password -token -__v -createdAt -updatedAt');
 
+        console.log("Pass-10");
         return res.status(200).json({
             success: true,
             message: "Fund withdrawn successfully.",
@@ -1193,3 +1063,42 @@ export const withDrawFund = async (req, res) => {
         });
     }
 };
+
+export const getPayoutByClientId = async (req, res) => {
+    try {
+
+        const { clientId } = req.params;
+
+        if (!clientId) {
+            return res.status(400).json({
+                success: false,
+                message: "Client ID is required"
+            });
+        }
+
+        const payouts = await Payout.find({ client: clientId })
+            .populate({
+                path: 'client',
+                select: '-password -token -__v -createdAt -updatedAt -_id -totalInvestment -totalWithdrawn -totalInterest -totalBalance -transactionRequests -statements -role -bankDetails',
+                populate: {
+                    path: 'investments',
+                    select: '-__v -createdAt -updatedAt -_id -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
+                }
+            })
+            .sort({ createdAt: -1 })
+
+
+        return res.status(200).json({
+            success: true,
+            message: "All payouts fetched successfully",
+            data: payouts
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+}

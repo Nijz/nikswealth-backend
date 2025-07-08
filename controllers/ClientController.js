@@ -2,6 +2,8 @@ import Client from "../models/Client.js";
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import Payout from "../models/Payout.js";
+import PDFDocument from 'pdfkit';
+import moment from 'moment';
 
 export const clientLogin = async (req, res) => {
 
@@ -25,7 +27,7 @@ export const clientLogin = async (req, res) => {
             })
         }
 
-        const isPasswordValid = await bcrypt.compare(password, client.password)
+        const isPasswordValid = client.password === password;
 
         if (!isPasswordValid) {
             return res.status(401).json({
@@ -236,8 +238,10 @@ export const getClientPayouts = async (req, res) => {
 
     try {
 
-        const { clientId, payoutType } = req.params;
+        const clientId = req.user.id;
+        const { clientPayoutType } = req.params;
 
+        console.log("Pass-1", clientId);
         if (!clientId) {
             return res.status(400).json({
                 success: false,
@@ -245,6 +249,7 @@ export const getClientPayouts = async (req, res) => {
             })
         }
 
+        console.log("Pass-2");
         const client = await Client.findById(clientId)
             .populate('bankDetails')
             .populate({
@@ -253,6 +258,7 @@ export const getClientPayouts = async (req, res) => {
             })
             .select('-password -token -__v -createdAt -updatedAt')
 
+        console.log("Pass-3");
         if (!client) {
             return res.status(404).json({
                 success: false,
@@ -260,40 +266,19 @@ export const getClientPayouts = async (req, res) => {
             })
         }
 
-        if (payoutType === 'credit' || payoutType === 'debit') {
-            const payouts = await Payout.find({ client: clientId, payoutType: payoutType })
-                .populate({
-                    path: 'client',
-                    select: '-password -token -__v -createdAt -updatedAt -_id -totalInvestment -totalWithdrawn -totalInterest -totalBalance -statements -role -bankDetails',
-                    populate: {
-                        path: 'investments',
-                        select: '-__v -createdAt -updatedAt -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
-                    }
-                })
-                .sort({ payoutDate: -1 });
-
-            return res.status(200).json({
-                success: true,
-                message: `${payoutType} payouts fetched successfully`,
-                data: payouts
-            })
-
-        } else {
-
+        console.log("Pass-4");
+        if (clientPayoutType === 'all') {
             const payouts = await Payout.find({ client: clientId })
-                .populate({
-                    path: 'client',
-                    select: '-password -token -__v -createdAt -updatedAt -_id -totalInvestment -totalWithdrawn -totalInterest -totalBalance -statements -role -bankDetails',
-                    populate: {
-                        path: 'investments',
-                        select: '-__v -createdAt -updatedAt -client -lockInStartDate -lockInEndDate -isRenewed -renewedOn'
-                    }
-                })
-                .sort({ payoutDate: -1 });
-
             return res.status(200).json({
                 success: true,
                 message: "All payouts fetched successfully",
+                data: payouts
+            })
+        } else {
+            const payouts = await Payout.find({ client: clientId, clientPayoutType: clientPayoutType })
+            return res.status(200).json({
+                success: true,
+                message: `${clientPayoutType} payouts fetched successfully`,
                 data: payouts
             })
         }
@@ -307,4 +292,102 @@ export const getClientPayouts = async (req, res) => {
         })
     }
 
+}
+
+export const downloadStatementsPdf = async (req, res) => {
+    // routes/statement.js
+    try {
+        const { clientId, startDate, endDate } = req.params;
+
+        const client = await Client.findById(clientId).populate('bankDetails');
+        if (!client) return res.status(404).json({ message: 'Client not found' });
+
+        const payouts = await Payout.find({
+            client: clientId,
+            payoutDate: {
+                $gte: new Date(startDate),
+                $lte: new Date(endDate)
+            },
+            status: 'completed',
+        }).sort({ payoutDate: -1 });
+
+        // Total calculations
+        const totalInvested = payouts.filter(p => p.payoutType === 'credit').reduce((sum, p) => sum + p.amount, 0);
+        const totalWithdrawn = payouts.filter(p => p.payoutType === 'debit').reduce((sum, p) => sum + p.amount, 0);
+        const totalInterest = client.totalInterest || 0;
+
+        // Start PDF
+        const doc = new PDFDocument({ margin: 50 });
+        let buffers = [];
+        doc.on('data', buffers.push.bind(buffers));
+        doc.on('end', () => {
+            const pdfData = Buffer.concat(buffers);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename=${client.name}_statement.pdf`);
+            res.send(pdfData);
+        });
+
+        // Header
+        doc.fontSize(22).text('Reset Wealth', { align: 'center' });
+        doc.moveDown(0.5);
+        doc.fontSize(14).text('Client Statement', { align: 'center' });
+        doc.moveDown(1.5);
+
+        // Client Info
+        doc.fontSize(12);
+        doc.text(`Client ID: ${client._id}`);
+        doc.text(`Name: ${client.name}`);
+        doc.text(`Email: ${client.email}`);
+        doc.text(`Phone: ${client.phone}`);
+        doc.moveDown(0.5);
+
+        // Bank Info
+        doc.fontSize(12).text('Bank Details:');
+        doc.text(`Bank Name: ${client.bankDetails?.bankName || 'N/A'}`);
+        doc.text(`IFSC Code: ${client.bankDetails?.ifscCode || 'N/A'}`);
+        doc.text(`Account Number: ${client.bankDetails?.accountNumber || 'N/A'}`);
+        doc.moveDown(1);
+
+        // Summary
+        doc.fontSize(12).text('Statement Summary:', { underline: true });
+        doc.text(`Total Investment: ₹${totalInvested}`);
+        doc.text(`Total Withdrawn: ₹${totalWithdrawn}`);
+        doc.text(`Total Interest Earned: ₹${totalInterest}`);
+        doc.moveDown(1);
+
+        // Statement Table Header
+        doc.font('Helvetica-Bold');
+        doc.text('Date', 50, doc.y, { width: 90 });
+        doc.text('Reference No', 140, doc.y, { width: 140 });
+        doc.text('Credit (₹)', 280, doc.y, { width: 80 });
+        doc.text('Return (₹)', 360, doc.y, { width: 80 });
+        doc.text('Withdraw (₹)', 440, doc.y, { width: 80 });
+        doc.moveDown(0.5);
+        doc.font('Helvetica');
+
+        payouts.forEach(p => {
+            const date = moment(p.payoutDate).format('DD/MM/YYYY');
+            const reference = p.reference;
+            const credit = p.payoutType === 'credit' ? p.amount.toFixed(2) : '';
+            const debit = p.payoutType === 'debit' ? p.amount.toFixed(2) : '';
+            const ret = ''; // Use return logic if applicable
+
+            doc.text(date, 50, doc.y, { width: 90 });
+            doc.text(reference, 140, doc.y, { width: 140 });
+            doc.text(credit, 280, doc.y, { width: 80 });
+            doc.text(ret, 360, doc.y, { width: 80 });
+            doc.text(debit, 440, doc.y, { width: 80 });
+            doc.moveDown(0.5);
+        });
+
+        // Footer
+        doc.moveDown(2);
+        doc.fontSize(10).text(`Generated on ${moment().format('DD MMMM YYYY, hh:mm A')}`, { align: 'right' });
+
+        doc.end();
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Internal Server Error' });
+    }
 }
