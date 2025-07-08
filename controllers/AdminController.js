@@ -326,7 +326,7 @@ export const getClientById = async (req, res) => {
 export const clientChangePassword = async (req, res) => {
 
     try {
-        const { email, password, newPassword } = req.body;
+        const { email, newPassword } = req.body;
 
         if (!email || !password, !newPassword) {
             return res.status(400).json({
@@ -343,17 +343,6 @@ export const clientChangePassword = async (req, res) => {
                 message: "Client not found"
             });
         }
-
-        const isPasswordValid = client.password === oldPassword;
-
-        if (!isPasswordValid) {
-            return res.status(401).json({
-                success: false,
-                message: "Invalid password"
-            });
-        }
-
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
 
         client.password = newPassword;
         await client.save();
