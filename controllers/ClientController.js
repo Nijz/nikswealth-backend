@@ -2,6 +2,7 @@ import Client from "../models/Client.js";
 import jwt from 'jsonwebtoken';
 import Payout from "../models/Payout.js";
 import BankDetails from "../models/BankDetails.js";
+import Investment from "../models/Investment.js";
 
 export const clientLogin = async (req, res) => {
 

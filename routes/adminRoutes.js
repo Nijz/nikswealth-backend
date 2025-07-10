@@ -1,5 +1,5 @@
 import express from 'express';
-import { createAdmin, loginAdmin, createClient, getAllClients, getClientById, clientChangePassword, getAdminProfile, getTotalFunds, getTotalInterest, createPayout, getAllPayouts, getPayoutByStatus, clientsTotalInvestment, addClientFund, deleteClient, editClient, updateBankDetails, searchClient, withDrawFund, getPayoutByClientId, updateAdminProfile } from '../controllers/AdminController.js';
+import { createAdmin, loginAdmin, createClient, getAllClients, getClientById, clientChangePassword, getAdminProfile, getTotalFunds, getTotalInterest, createPayout, getAllPayouts, getPayoutByStatus, clientsTotalInvestment, addClientFund, deleteClient, editClient, updateBankDetails, searchClient, withDrawFund, getPayoutByClientId, updateAdminProfile, renewInvestment } from '../controllers/AdminController.js';
 import { auth, isAdmin, isClient } from '../middlewares/auth.js';
 
 const router = express.Router();
@@ -32,6 +32,8 @@ router.put('/client/update/bank-details/:clientId', auth, isAdmin, updateBankDet
 router.post('/search/clients', auth, isAdmin, searchClient)
 router.put('/withdraw/client/fund', auth, isAdmin, withDrawFund)
 router.get('/payouts/client/:clientId', auth, isAdmin, getPayoutByClientId)
+
+router.put('/client/fund/renew', auth, isAdmin, renewInvestment)
 
 export default router;
 

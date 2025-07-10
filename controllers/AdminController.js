@@ -1091,3 +1091,66 @@ export const getPayoutByClientId = async (req, res) => {
         });
     }
 }
+export const renewInvestment = async (req, res) => {
+    try {
+        const { investmentId, clientId } = req.body;
+
+        if (!investmentId || !clientId) {
+            return res.status(400).json({
+                success: false,
+                message: "All fields are required"
+            });
+        }
+
+        const [user, investment, admin] = await Promise.all([
+            Client.findById(clientId),
+            Investment.findById(investmentId),
+            Admin.findById(req.user.id)
+        ]);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        if (!investment) {
+            return res.status(404).json({
+                success: false,
+                message: "Investment not found"
+            });
+        }
+
+        const today = new Date();
+        const lockInEndDate = new Date(today);
+        lockInEndDate.setDate(lockInEndDate.getDate() + 365);
+
+        investment.isRenewed = true;
+        investment.renewedOn = today;
+        investment.lockInStartDate = today;
+        investment.status = 'locked';
+        investment.lockInEndDate = lockInEndDate;
+
+        await Promise.all([
+            admin.save(),
+            user.save(),
+            investment.save()
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            message: "Investment renewed successfully",
+            data: investment
+        });
+
+    } catch (error) {
+        console.error("Renew Investment Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+};
