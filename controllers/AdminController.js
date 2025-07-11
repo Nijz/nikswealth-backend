@@ -80,7 +80,7 @@ export const loginAdmin = async (req, res) => {
             });
         }
 
-        const isPasswordValid = await bcrypt.compare(password, admin.password);
+        const isPasswordValid = password === admin.password;
 
         if (!isPasswordValid) {
             return res.status(401).json({
