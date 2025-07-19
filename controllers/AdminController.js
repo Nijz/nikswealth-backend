@@ -62,8 +62,6 @@ export const loginAdmin = async (req, res) => {
 
         const { email, password } = req.body;
 
-        console.log("Login attempt with email:", email);
-
         if (!email || !password) {
             return res.status(400).json({
                 success: false,
@@ -81,6 +79,7 @@ export const loginAdmin = async (req, res) => {
         }
 
         const isPasswordValid = password === admin.password;
+        console.log('isPasswordValid', isPasswordValid);
 
         if (!isPasswordValid) {
             return res.status(401).json({
@@ -98,9 +97,6 @@ export const loginAdmin = async (req, res) => {
         const token = jwt.sign(payload, process.env.JWT_SECRET, {
             expiresIn: '1d'
         });
-
-        admin.token = token;
-        await admin.save();
 
         return res.status(200).json({
             success: true,
@@ -180,7 +176,6 @@ export const createClient = async (req, res) => {
     try {
 
         const { email, password, name, phone, bankName, accountNumber, ifscCode, bankBranch, amount, date, lockDate, refNo } = req.body;
-
         const istDate = DateTime.fromISO(date, { zone: 'Asia/Kolkata' }).startOf('day').toISO()
         const lock = DateTime.fromISO(lockDate, { zone: 'Asia/Kolkata' }).startOf('day').toISO()
 
@@ -239,7 +234,7 @@ export const createClient = async (req, res) => {
             amount: amount,
             reference: refNo,
             payoutType: "credit",
-            clientPayoutType: "debit",
+            clientPayoutType: "credit",
             payoutDate: istDate,
         })
 
