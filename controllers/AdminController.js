@@ -497,7 +497,7 @@ export const addClientFund = async (req, res) => {
             amount: amount,
             reference: refNo,
             payoutType: "credit",
-            clientPayoutType: "debit",
+            clientPayoutType: "credit",
             payoutDate: istDate,
         })
 
